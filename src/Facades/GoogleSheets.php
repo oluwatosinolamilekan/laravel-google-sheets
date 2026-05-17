@@ -5,6 +5,7 @@ namespace Olamilekan\GoogleSheets\Facades;
 use Illuminate\Support\Facades\Facade;
 use Olamilekan\GoogleSheets\GoogleSheetsManager;
 use Olamilekan\GoogleSheets\Sheet;
+use Olamilekan\GoogleSheets\Testing\FakeGoogleSheetsManager;
 
 /**
  * @method static Sheet connection(?string $name = null)
@@ -30,11 +31,35 @@ use Olamilekan\GoogleSheets\Sheet;
  * @method static Sheet duplicateSheet(string $sourceTitle, string $newTitle)
  * @method static array listSheets()
  * @method static bool sheetExists(string $title)
+ * @method static int appendAssoc(array $rows)
+ * @method static int updateAssoc(array $rows)
+ * @method static int upsert(string $keyColumn, array $rows)
+ * @method static \Illuminate\Support\LazyCollection lazy(int $chunkSize = 500)
+ * @method static \Illuminate\Support\Collection validate(array $rules, array $messages = [], array $attributes = [])
+ * @method static Sheet requireHeaders(array $headers)
+ * @method static mixed import(\Olamilekan\GoogleSheets\Imports\SheetImport $import, ?string $connection = null)
+ * @method static int export(\Olamilekan\GoogleSheets\Exports\SheetExport $export, ?string $connection = null)
+ * @method static Sheet namedRange(string $name)
+ * @method static array listNamedRanges()
+ * @method static string formula(string $formula)
+ * @method static Sheet boldHeader()
+ * @method static Sheet freezeRows(int $rows = 1)
+ * @method static Sheet autoResizeColumns(int $startColumn = 1, ?int $endColumn = null)
+ * @method static Sheet formatRange(string $range, array $format, string $fields = 'userEnteredFormat')
  *
  * @see \Olamilekan\GoogleSheets\GoogleSheetsManager
  */
 class GoogleSheets extends Facade
 {
+    public static function fake(array $sheets = []): FakeGoogleSheetsManager
+    {
+        $fake = new FakeGoogleSheetsManager($sheets);
+
+        static::swap($fake);
+
+        return $fake;
+    }
+
     protected static function getFacadeAccessor(): string
     {
         return GoogleSheetsManager::class;

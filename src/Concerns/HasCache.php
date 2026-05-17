@@ -53,12 +53,11 @@ trait HasCache
 
         $store = $this->cacheConfig['store'] ?? null;
         $ttl = $this->cacheConfig['ttl'] ?? 300;
+        $cacheKey = $this->getCacheKey($key);
 
-        return Cache::store($store)->remember(
-            $this->getCacheKey($key),
-            $ttl,
-            $callback
-        );
+        $this->rememberCacheKey($cacheKey);
+
+        return Cache::store($store)->remember($cacheKey, $ttl, $callback);
     }
 
     protected function forgetCache(string $key): void
@@ -70,5 +69,54 @@ trait HasCache
         $store = $this->cacheConfig['store'] ?? null;
 
         Cache::store($store)->forget($this->getCacheKey($key));
+    }
+
+    protected function forgetCachedKeys(array $keys): void
+    {
+        if (! $this->isCacheEnabled()) {
+            return;
+        }
+
+        $store = $this->cacheConfig['store'] ?? null;
+
+        foreach ($keys as $key) {
+            Cache::store($store)->forget($key);
+        }
+    }
+
+    protected function rememberCacheKey(string $cacheKey): void
+    {
+        if (! method_exists($this, 'getSpreadsheetId')) {
+            return;
+        }
+
+        $store = $this->cacheConfig['store'] ?? null;
+        $ttl = $this->cacheConfig['ttl'] ?? 300;
+        $indexKey = $this->cacheIndexKey();
+        $keys = Cache::store($store)->get($indexKey, []);
+
+        if (! in_array($cacheKey, $keys, true)) {
+            $keys[] = $cacheKey;
+            Cache::store($store)->put($indexKey, $keys, $ttl);
+        }
+    }
+
+    protected function flushRememberedCacheKeys(): void
+    {
+        if (! method_exists($this, 'getSpreadsheetId')) {
+            return;
+        }
+
+        $store = $this->cacheConfig['store'] ?? null;
+        $indexKey = $this->cacheIndexKey();
+        $keys = Cache::store($store)->get($indexKey, []);
+
+        $this->forgetCachedKeys($keys);
+        Cache::store($store)->forget($indexKey);
+    }
+
+    protected function cacheIndexKey(): string
+    {
+        return $this->getCacheKey('index:' . $this->getSpreadsheetId());
     }
 }
