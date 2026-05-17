@@ -11,10 +11,14 @@ use Google\Service\Sheets\Spreadsheet;
 use Google\Service\Sheets\UpdateValuesResponse;
 use Google\Service\Sheets\ValueRange;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\LazyCollection;
 use Olamilekan\GoogleSheets\Concerns\HasCache;
 use Olamilekan\GoogleSheets\Concerns\HasHeaders;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
+use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
+use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class Sheet implements SheetInterface
 {
@@ -168,6 +172,46 @@ class Sheet implements SheetInterface
         $this->get()->chunk($size)->each($callback);
     }
 
+    public function lazy(int $chunkSize = 500): LazyCollection
+    {
+        return LazyCollection::make(function () use ($chunkSize) {
+            foreach ($this->get()->chunk($chunkSize) as $chunk) {
+                foreach ($chunk as $row) {
+                    yield $row;
+                }
+            }
+        });
+    }
+
+    public function validate(array $rules, array $messages = [], array $attributes = []): Collection
+    {
+        return $this->get()->map(function (array $row, int $index) use ($rules, $messages, $attributes) {
+            return Validator::make($row, $rules, $messages, $attributes)
+                ->validateWithBag('googleSheetsRow' . ($index + 1));
+        });
+    }
+
+    public function requireHeaders(array $headers): static
+    {
+        $missing = array_values(array_diff($headers, $this->headers()));
+
+        if ($missing !== []) {
+            throw new GoogleSheetsException('Missing required Google Sheet headers: ' . implode(', ', $missing));
+        }
+
+        return $this;
+    }
+
+    public function import(SheetImport $import): mixed
+    {
+        return $import->handle($this);
+    }
+
+    public function export(SheetExport $export): int
+    {
+        return $export->handle($this);
+    }
+
     // -------------------------------------------------------------------------
     //  Write Operations
     // -------------------------------------------------------------------------
@@ -191,6 +235,11 @@ class Sheet implements SheetInterface
         return $response->getUpdates()?->getUpdatedRows() ?? 0;
     }
 
+    public function appendAssoc(array $rows): int
+    {
+        return $this->append($this->mapAssociativeRowsToHeaders($rows));
+    }
+
     public function update(array $rows): int
     {
         $rows = $this->normalizeRows($rows);
@@ -208,6 +257,47 @@ class Sheet implements SheetInterface
         $this->invalidateReadCache();
 
         return $response->getUpdatedRows() ?? 0;
+    }
+
+    public function updateAssoc(array $rows): int
+    {
+        return $this->update($this->mapAssociativeRowsToHeaders($rows));
+    }
+
+    public function upsert(string $keyColumn, array $rows): int
+    {
+        $this->requireHeaders([$keyColumn]);
+
+        $headers = $this->headers();
+        $existing = $this->all();
+        $updates = [];
+        $appends = [];
+
+        foreach ($rows as $row) {
+            $key = $row[$keyColumn] ?? null;
+
+            if ($key === null || $key === '') {
+                $appends[] = $row;
+                continue;
+            }
+
+            $rowIndex = $existing->search(fn (array $existingRow) => (string) ($existingRow[$keyColumn] ?? '') === (string) $key);
+
+            if ($rowIndex === false) {
+                $appends[] = $row;
+                continue;
+            }
+
+            $sheetRowNumber = $this->firstRowAsHeader ? $rowIndex + 2 : $rowIndex + 1;
+            $updates[$this->rowRange($sheetRowNumber, count($headers))] = [
+                $this->mapAssociativeRowToHeaders($row, $headers),
+            ];
+        }
+
+        $updated = $updates === [] ? 0 : $this->batchUpdate($updates);
+        $appended = $appends === [] ? 0 : $this->appendAssoc($appends);
+
+        return $updated + $appended;
     }
 
     public function batchUpdate(array $data): int
@@ -326,6 +416,99 @@ class Sheet implements SheetInterface
         return in_array($title, $this->listSheets(), true);
     }
 
+    public function namedRange(string $name): static
+    {
+        return $this->range($name);
+    }
+
+    public function listNamedRanges(): array
+    {
+        return collect($this->getSpreadsheet()->getNamedRanges() ?? [])
+            ->map(fn ($range) => $range->getName())
+            ->all();
+    }
+
+    public function formula(string $formula): string
+    {
+        return str_starts_with($formula, '=') ? $formula : "={$formula}";
+    }
+
+    public function boldHeader(): static
+    {
+        return $this->formatRange('1:1', [
+            'textFormat' => ['bold' => true],
+        ], 'userEnteredFormat.textFormat.bold');
+    }
+
+    public function freezeRows(int $rows = 1): static
+    {
+        $sheetId = $this->getSheetIdByTitle($this->sheetName);
+
+        if ($sheetId === null) {
+            throw new GoogleSheetsException("Sheet tab [{$this->sheetName}] not found.");
+        }
+
+        $this->executeBatchRequest([
+            new GoogleRequest([
+                'updateSheetProperties' => [
+                    'properties' => [
+                        'sheetId' => $sheetId,
+                        'gridProperties' => ['frozenRowCount' => $rows],
+                    ],
+                    'fields' => 'gridProperties.frozenRowCount',
+                ],
+            ]),
+        ]);
+
+        return $this;
+    }
+
+    public function autoResizeColumns(int $startColumn = 1, ?int $endColumn = null): static
+    {
+        $sheetId = $this->getSheetIdByTitle($this->sheetName);
+
+        if ($sheetId === null) {
+            throw new GoogleSheetsException("Sheet tab [{$this->sheetName}] not found.");
+        }
+
+        $dimensions = [
+            'sheetId' => $sheetId,
+            'dimension' => 'COLUMNS',
+            'startIndex' => max(0, $startColumn - 1),
+        ];
+
+        if ($endColumn !== null) {
+            $dimensions['endIndex'] = $endColumn;
+        }
+
+        $this->executeBatchRequest([
+            new GoogleRequest([
+                'autoResizeDimensions' => [
+                    'dimensions' => $dimensions,
+                ],
+            ]),
+        ]);
+
+        return $this;
+    }
+
+    public function formatRange(string $range, array $format, string $fields = 'userEnteredFormat'): static
+    {
+        $this->executeBatchRequest([
+            new GoogleRequest([
+                'repeatCell' => [
+                    'range' => $this->gridRange($range),
+                    'cell' => [
+                        'userEnteredFormat' => $format,
+                    ],
+                    'fields' => $fields,
+                ],
+            ]),
+        ]);
+
+        return $this;
+    }
+
     // -------------------------------------------------------------------------
     //  Spreadsheet Metadata
     // -------------------------------------------------------------------------
@@ -383,6 +566,96 @@ class Sheet implements SheetInterface
         return array_values($rows);
     }
 
+    protected function mapAssociativeRowsToHeaders(array $rows): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+
+        $headers = $this->headers();
+
+        return collect($rows)
+            ->map(fn (array $row) => $this->mapAssociativeRowToHeaders($row, $headers))
+            ->all();
+    }
+
+    protected function mapAssociativeRowToHeaders(array $row, array $headers): array
+    {
+        return collect($headers)
+            ->map(fn (string $header) => $row[$header] ?? null)
+            ->all();
+    }
+
+    protected function rowRange(int $rowNumber, int $columnCount): string
+    {
+        return 'A' . $rowNumber . ':' . $this->columnName($columnCount) . $rowNumber;
+    }
+
+    protected function columnName(int $number): string
+    {
+        $name = '';
+
+        while ($number > 0) {
+            $number--;
+            $name = chr(65 + ($number % 26)) . $name;
+            $number = intdiv($number, 26);
+        }
+
+        return $name;
+    }
+
+    protected function columnIndex(string $column): int
+    {
+        $column = strtoupper($column);
+        $index = 0;
+
+        foreach (str_split($column) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    protected function gridRange(string $range): array
+    {
+        $sheetId = $this->getSheetIdByTitle($this->sheetName);
+
+        if ($sheetId === null) {
+            throw new GoogleSheetsException("Sheet tab [{$this->sheetName}] not found.");
+        }
+
+        $range = str_contains($range, '!') ? explode('!', $range, 2)[1] : $range;
+        $gridRange = ['sheetId' => $sheetId];
+
+        if (preg_match('/^([A-Z]+)?(\d+)?(?::([A-Z]+)?(\d+)?)?$/i', $range, $matches) !== 1) {
+            throw new GoogleSheetsException("Invalid A1 range [{$range}].");
+        }
+
+        [, $startColumn, $startRow, $endColumn, $endRow] = array_pad($matches, 5, null);
+
+        if ($startColumn) {
+            $gridRange['startColumnIndex'] = $this->columnIndex($startColumn);
+        }
+
+        if ($startRow) {
+            $gridRange['startRowIndex'] = ((int) $startRow) - 1;
+        }
+
+        if ($endColumn) {
+            $gridRange['endColumnIndex'] = $this->columnIndex($endColumn) + 1;
+        } elseif ($startColumn && ! $endRow) {
+            $gridRange['endColumnIndex'] = $this->columnIndex($startColumn) + 1;
+        }
+
+        if ($endRow) {
+            $gridRange['endRowIndex'] = (int) $endRow;
+        } elseif ($startRow && ! $endColumn) {
+            $gridRange['endRowIndex'] = (int) $startRow;
+        }
+
+        return $gridRange;
+    }
+
     protected function getSheetIdByTitle(string $title): ?int
     {
         $spreadsheet = $this->getSpreadsheet();
@@ -405,8 +678,6 @@ class Sheet implements SheetInterface
 
     protected function invalidateReadCache(): void
     {
-        $range = $this->resolveRange();
-
-        $this->forgetCache("get:{$this->spreadsheetId}:{$range}");
+        $this->flushRememberedCacheKeys();
     }
 }

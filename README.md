@@ -131,6 +131,84 @@ GoogleSheets::batchUpdate([
 GoogleSheets::range('A2:C100')->clear();
 ```
 
+### Associative Rows, Upserts, And Validation
+
+```php
+// Map associative arrays to the sheet's header row before appending
+GoogleSheets::connection('users')->appendAssoc([
+    ['name' => 'Alice', 'email' => 'alice@example.com', 'role' => 'admin'],
+]);
+
+// Update existing rows by key column and append missing rows
+GoogleSheets::connection('users')->upsert('email', [
+    ['name' => 'Alice Updated', 'email' => 'alice@example.com', 'role' => 'owner'],
+    ['name' => 'Charlie', 'email' => 'charlie@example.com', 'role' => 'user'],
+]);
+
+// Validate imported rows with Laravel validation rules
+$validRows = GoogleSheets::connection('users')->validate([
+    'name' => ['required', 'string'],
+    'email' => ['required', 'email'],
+]);
+
+// Ensure required sheet headers exist
+GoogleSheets::connection('users')->requireHeaders(['name', 'email', 'role']);
+```
+
+### Import And Export Classes
+
+```php
+use App\Models\User;
+use Olamilekan\GoogleSheets\Imports\SheetImport;
+
+class UsersImport extends SheetImport
+{
+    public function rules(): array
+    {
+        return ['email' => ['required', 'email']];
+    }
+
+    public function model(array $row): User
+    {
+        return User::updateOrCreate(
+            ['email' => $row['email']],
+            ['name' => $row['name']]
+        );
+    }
+}
+
+GoogleSheets::import(new UsersImport(), 'users');
+```
+
+```php
+use App\Models\Report;
+use Olamilekan\GoogleSheets\Exports\SheetExport;
+
+class ReportsExport extends SheetExport
+{
+    public bool $replace = true;
+
+    public function headings(): array
+    {
+        return ['Date', 'Name', 'Total'];
+    }
+
+    public function collection()
+    {
+        return Report::query()
+            ->latest()
+            ->get()
+            ->map(fn (Report $report) => [
+                $report->created_at->toDateString(),
+                $report->name,
+                $report->total,
+            ]);
+    }
+}
+
+GoogleSheets::export(new ReportsExport(), 'reports');
+```
+
 ### Multiple Connections
 
 ```php
@@ -188,6 +266,8 @@ $rows = GoogleSheets::enableCache(600)->all();
 $rows = GoogleSheets::disableCache()->all();
 ```
 
+Write operations now clear remembered read cache keys for the active spreadsheet, so cached ranges are refreshed after updates.
+
 ### Chunked Processing
 
 ```php
@@ -196,6 +276,55 @@ GoogleSheets::chunk(100, function ($chunk) {
         // process each row
     }
 });
+
+GoogleSheets::lazy(500)->each(function (array $row) {
+    // process one row at a time
+});
+```
+
+### Formatting, Formulas, And Named Ranges
+
+```php
+GoogleSheets::connection('reports')
+    ->sheet('Monthly')
+    ->boldHeader()
+    ->freezeRows(1)
+    ->autoResizeColumns(1, 4);
+
+GoogleSheets::connection('reports')->append([
+    ['Total', GoogleSheets::formula('SUM(C2:C100)')],
+]);
+
+$summaryRows = GoogleSheets::connection('reports')
+    ->namedRange('MonthlySummary')
+    ->get();
+```
+
+### Testing
+
+```php
+use Olamilekan\GoogleSheets\Facades\GoogleSheets;
+
+$fake = GoogleSheets::fake([
+    'users' => [
+        ['name' => 'Alice', 'email' => 'alice@example.com'],
+    ],
+]);
+
+GoogleSheets::connection('users')->appendAssoc([
+    ['name' => 'Bob', 'email' => 'bob@example.com'],
+]);
+
+$fake->assertAppended('users', ['name' => 'Bob', 'email' => 'bob@example.com']);
+```
+
+### Artisan Commands
+
+```bash
+php artisan google-sheets:list users
+php artisan google-sheets:clear reports --sheet=Monthly --range=A2:D100
+php artisan google-sheets:sync "App\\Imports\\UsersImport" users
+php artisan google-sheets:sync "App\\Exports\\ReportsExport" reports
 ```
 
 ### Spreadsheet Metadata
@@ -263,11 +392,24 @@ class UserImportService
 | `update(array $rows)` | `int` | Update range (returns row count) |
 | `batchUpdate(array $data)` | `int` | Update multiple ranges |
 | `clear()` | `bool` | Clear values in range |
+| `appendAssoc(array)` | `int` | Append associative rows mapped to sheet headers |
+| `updateAssoc(array)` | `int` | Update associative rows mapped to sheet headers |
+| `upsert(key, rows)` | `int` | Update rows by key column and append missing rows |
+| `validate(rules)` | `Collection` | Validate rows with Laravel validation rules |
+| `requireHeaders(array)` | `static` | Ensure required headers exist |
+| `lazy(size)` | `LazyCollection` | Iterate rows lazily from a collection-backed read |
 | `createSheet(string)` | `static` | Add a new tab |
 | `deleteSheet(string)` | `bool` | Remove a tab |
 | `duplicateSheet(src, new)` | `static` | Copy a tab |
 | `listSheets()` | `array` | List all tab names |
 | `sheetExists(string)` | `bool` | Check if a tab exists |
+| `namedRange(string)` | `static` | Set a named range for the next operation |
+| `listNamedRanges()` | `array` | List named ranges |
+| `formula(string)` | `string` | Create a formula cell value |
+| `boldHeader()` | `static` | Bold the first row |
+| `freezeRows(int)` | `static` | Freeze leading rows |
+| `autoResizeColumns(start, end)` | `static` | Auto-resize columns |
+| `formatRange(range, format)` | `static` | Apply cell formatting |
 | `withHeaders()` | `static` | Map first row as keys (default) |
 | `withoutHeaders()` | `static` | Return raw arrays |
 | `enableCache(?int $ttl)` | `static` | Enable caching |

@@ -5,7 +5,9 @@ namespace Olamilekan\GoogleSheets;
 use Google\Service\Sheets as GoogleSheetsService;
 use Olamilekan\GoogleSheets\Contracts\ManagerInterface;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
+use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\InvalidConnectionException;
+use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class GoogleSheetsManager implements ManagerInterface
 {
@@ -79,6 +81,16 @@ class GoogleSheetsManager implements ManagerInterface
         $this->purge($name);
 
         return $this->connection($name);
+    }
+
+    public function import(SheetImport $import, ?string $connection = null): mixed
+    {
+        return $this->connection($connection)->import($import);
+    }
+
+    public function export(SheetExport $export, ?string $connection = null): int
+    {
+        return $this->connection($connection)->export($export);
     }
 
     /**

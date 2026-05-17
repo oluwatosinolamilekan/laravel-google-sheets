@@ -3,6 +3,9 @@
 namespace Olamilekan\GoogleSheets;
 
 use Illuminate\Support\ServiceProvider;
+use Olamilekan\GoogleSheets\Console\ClearSheetCommand;
+use Olamilekan\GoogleSheets\Console\ListSheetsCommand;
+use Olamilekan\GoogleSheets\Console\SyncSheetCommand;
 use Olamilekan\GoogleSheets\Contracts\ManagerInterface;
 
 class GoogleSheetsServiceProvider extends ServiceProvider
@@ -25,6 +28,12 @@ class GoogleSheetsServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../config/google-sheets.php' => config_path('google-sheets.php'),
             ], 'google-sheets-config');
+
+            $this->commands([
+                ClearSheetCommand::class,
+                ListSheetsCommand::class,
+                SyncSheetCommand::class,
+            ]);
         }
     }
 }
