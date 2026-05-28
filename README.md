@@ -7,7 +7,7 @@ A fluent Laravel package for reading, writing, and managing Google Sheets with f
 ## Requirements
 
 - PHP 8.1+
-- Laravel 10, 11, or 12
+- Laravel 10, 11, 12, or 13
 - A Google Cloud project with the Sheets API enabled
 - A service account JSON credentials file
 
