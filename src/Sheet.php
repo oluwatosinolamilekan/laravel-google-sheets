@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\LazyCollection;
 use Olamilekan\GoogleSheets\Concerns\HasCache;
 use Olamilekan\GoogleSheets\Concerns\HasHeaders;
+use Olamilekan\GoogleSheets\Concerns\SyncsData;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
@@ -25,6 +26,7 @@ class Sheet implements SheetInterface
 {
     use HasCache;
     use HasHeaders;
+    use SyncsData;
 
     protected GoogleSheetsService $service;
 
