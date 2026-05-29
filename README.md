@@ -155,6 +155,42 @@ $validRows = GoogleSheets::connection('users')->validate([
 GoogleSheets::connection('users')->requireHeaders(['name', 'email', 'role']);
 ```
 
+### Import Diff Preview
+
+Preview the impact of an import before writing anything. The preview separates new, changed, deleted, invalid, and conflict rows.
+
+```php
+use App\Models\User;
+use Olamilekan\GoogleSheets\Facades\GoogleSheets;
+
+$preview = GoogleSheets::connection('users')
+    ->diffAgainst(User::query(), key: 'email')
+    ->rules([
+        'name' => ['required', 'string'],
+        'email' => ['required', 'email'],
+    ])
+    ->preview();
+
+$preview->counts();
+// ['new' => 1, 'changed' => 2, 'deleted' => 0, 'invalid' => 1, 'conflicts' => 0]
+
+$preview->new;       // rows in the sheet that are not in the query
+$preview->changed;   // rows where sheet values differ from existing query values
+$preview->deleted;   // query rows missing from the sheet
+$preview->invalid;   // rows failing validation or missing the key
+$preview->conflicts; // duplicate key rows in the sheet or query
+```
+
+By default, changed rows compare sheet columns that also exist on the query/model row, excluding the key. You may narrow the comparison:
+
+```php
+$preview = GoogleSheets::connection('users')
+    ->diffAgainst(User::query(), key: 'email')
+    ->only(['name', 'role'])
+    ->except(['updated_at'])
+    ->preview();
+```
+
 ### Import And Export Classes
 
 ```php

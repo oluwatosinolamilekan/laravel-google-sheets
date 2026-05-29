@@ -18,6 +18,7 @@ use Olamilekan\GoogleSheets\Concerns\HasHeaders;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
+use Olamilekan\GoogleSheets\Imports\ImportDiff;
 use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class Sheet implements SheetInterface
@@ -205,6 +206,11 @@ class Sheet implements SheetInterface
     public function import(SheetImport $import): mixed
     {
         return $import->handle($this);
+    }
+
+    public function diffAgainst(mixed $target, string $key): ImportDiff
+    {
+        return new ImportDiff($this, $target, $key);
     }
 
     public function export(SheetExport $export): int

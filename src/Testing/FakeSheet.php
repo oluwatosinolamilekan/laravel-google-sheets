@@ -8,6 +8,7 @@ use Illuminate\Support\LazyCollection;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
+use Olamilekan\GoogleSheets\Imports\ImportDiff;
 use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class FakeSheet implements SheetInterface
@@ -133,6 +134,11 @@ class FakeSheet implements SheetInterface
     public function import(SheetImport $import): mixed
     {
         return $import->handle($this);
+    }
+
+    public function diffAgainst(mixed $target, string $key): ImportDiff
+    {
+        return new ImportDiff($this, $target, $key);
     }
 
     public function export(SheetExport $export): int
