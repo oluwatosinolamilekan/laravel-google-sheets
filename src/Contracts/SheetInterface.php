@@ -3,6 +3,7 @@
 namespace Olamilekan\GoogleSheets\Contracts;
 
 use Illuminate\Support\Collection;
+use Olamilekan\GoogleSheets\Imports\ImportDiff;
 
 interface SheetInterface
 {
@@ -27,4 +28,6 @@ interface SheetInterface
     public function find(string $column, mixed $value): Collection;
 
     public function headers(): array;
+
+    public function diffAgainst(mixed $target, string $key): ImportDiff;
 }
