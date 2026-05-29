@@ -6,6 +6,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\LazyCollection;
 use Illuminate\Validation\ValidationException;
+use Olamilekan\GoogleSheets\Concerns\SyncsData;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
@@ -14,6 +15,8 @@ use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class FakeSheet implements SheetInterface
 {
+    use SyncsData;
+
     protected array $rows;
 
     protected string $sheetName = 'Sheet1';
@@ -113,6 +116,18 @@ class FakeSheet implements SheetInterface
     public function updateAssoc(array $rows): int
     {
         return $this->update($rows);
+    }
+
+    public function batchUpdate(array $data): int
+    {
+        $updated = 0;
+
+        foreach ($data as $range => $rows) {
+            $this->range($range)->update($rows);
+            $updated += count($this->normalizeRows($rows));
+        }
+
+        return $updated;
     }
 
     public function clear(): bool

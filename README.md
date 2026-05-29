@@ -197,6 +197,81 @@ $preview = GoogleSheets::connection('users')
     ->preview();
 ```
 
+### Sync Methods
+
+Sync methods return a `SyncReport` with created, updated, deleted, skipped, conflict, and failed counts.
+
+```php
+use App\Models\User;
+use Olamilekan\GoogleSheets\Facades\GoogleSheets;
+
+// Database / Eloquent -> Google Sheet
+$report = GoogleSheets::connection('users')
+    ->syncFromModel(User::class, keyColumn: 'email', options: [
+        'columns' => ['name', 'email', 'role'],
+        'conflict' => 'app_wins',
+    ]);
+
+// Google Sheet -> Database / Eloquent
+$report = GoogleSheets::connection('users')
+    ->syncToModel(User::class, keyColumn: 'email');
+
+// CSV -> Google Sheet
+$report = GoogleSheets::connection('users')
+    ->importCsv(storage_path('app/users.csv'), keyColumn: 'email');
+
+// Google Sheet -> CSV
+$report = GoogleSheets::connection('users')
+    ->exportCsv(storage_path('app/users-export.csv'));
+
+// API -> Google Sheet
+$report = GoogleSheets::connection('orders')
+    ->syncFromApi('https://api.example.com/orders', keyColumn: 'order_id', options: [
+        'data_key' => 'data',
+        'headers' => ['Authorization' => 'Bearer '.$token],
+    ]);
+
+// Google Sheet -> API
+$report = GoogleSheets::connection('orders')
+    ->syncToApi('https://api.example.com/orders/bulk');
+
+// Conflict-aware two-way sync
+$report = GoogleSheets::connection('users')
+    ->syncTwoWay(User::class, keyColumn: 'email', options: [
+        'conflict' => 'fail', // app_wins, sheet_wins, skip, fail
+    ]);
+
+$report->counts();
+$report->created();
+$report->updated();
+$report->conflicts();
+$report->errors();
+```
+
+Run syncs in the queue:
+
+```php
+GoogleSheets::connection('users')
+    ->queueSync('syncFromModel', [User::class, 'email'], queue: 'imports');
+```
+
+Every sync is audit logged through Laravel's logger and kept in the in-process audit log:
+
+```php
+$records = GoogleSheets::connection('users')->syncAuditLog();
+```
+
+Notify teams when a sync finishes or fails:
+
+```php
+GoogleSheets::connection('users')->syncFromModel(User::class, 'email', [
+    'notify' => [
+        'slack_webhook' => config('services.slack.sync_webhook'),
+        'mail_to' => 'ops@example.com',
+    ],
+]);
+```
+
 ### Import And Export Classes
 
 ```php
@@ -457,6 +532,16 @@ class UserImportService
 | `appendAssoc(array)` | `int` | Append associative rows mapped to sheet headers |
 | `updateAssoc(array)` | `int` | Update associative rows mapped to sheet headers |
 | `upsert(key, rows)` | `int` | Update rows by key column and append missing rows |
+| `syncRows(rows, key, options)` | `SyncReport` | Sync array/collection rows into the sheet |
+| `syncFromModel(model, key, options)` | `SyncReport` | Sync Eloquent model records into the sheet |
+| `syncToModel(model, key, options)` | `SyncReport` | Sync sheet rows into an Eloquent model |
+| `importCsv(path, key, options)` | `SyncReport` | Sync a CSV file into the sheet |
+| `exportCsv(path, options)` | `SyncReport` | Export sheet rows to a CSV file |
+| `syncFromApi(url, key, options)` | `SyncReport` | Pull JSON rows from an API into the sheet |
+| `syncToApi(url, options)` | `SyncReport` | Push sheet rows to an API endpoint |
+| `syncTwoWay(target, key, options)` | `SyncReport` | Run conflict-aware two-way sync |
+| `queueSync(method, args, queue)` | `PendingDispatch` | Dispatch a sync method to Laravel's queue |
+| `syncAuditLog()` | `Collection` | Read in-process sync audit records |
 | `validate(rules)` | `Collection` | Validate rows with Laravel validation rules |
 | `requireHeaders(array)` | `static` | Ensure required headers exist |
 | `lazy(size)` | `LazyCollection` | Iterate rows lazily from a collection-backed read |
