@@ -13,6 +13,7 @@ use Google\Service\Sheets\ValueRange;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Validation\ValidationException;
 use Olamilekan\GoogleSheets\Concerns\HasCache;
 use Olamilekan\GoogleSheets\Concerns\HasHeaders;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
@@ -184,12 +185,30 @@ class Sheet implements SheetInterface
         });
     }
 
-    public function validate(array $rules, array $messages = [], array $attributes = []): Collection
+    public function validate(
+        array $rules,
+        array $messages = [],
+        array $attributes = [],
+        ?string $errorSheetName = null
+    ): Collection
     {
+        if ($errorSheetName !== null) {
+            return $this->validateRowsAndWriteErrors($rules, $messages, $attributes, $errorSheetName);
+        }
+
         return $this->get()->map(function (array $row, int $index) use ($rules, $messages, $attributes) {
             return Validator::make($row, $rules, $messages, $attributes)
                 ->validateWithBag('googleSheetsRow' . ($index + 1));
         });
+    }
+
+    public function validateWithErrorSheet(
+        array $rules,
+        string $errorSheetName = 'Import Errors',
+        array $messages = [],
+        array $attributes = []
+    ): Collection {
+        return $this->validate($rules, $messages, $attributes, $errorSheetName);
     }
 
     public function requireHeaders(array $headers): static
@@ -660,6 +679,76 @@ class Sheet implements SheetInterface
         }
 
         return $gridRange;
+    }
+
+    protected function validateRowsAndWriteErrors(
+        array $rules,
+        array $messages,
+        array $attributes,
+        string $errorSheetName
+    ): Collection {
+        $validRows = collect();
+        $errors = [];
+
+        foreach ($this->get() as $index => $row) {
+            $validator = Validator::make($row, $rules, $messages, $attributes);
+
+            if ($validator->fails()) {
+                $sheetRowNumber = $this->firstRowAsHeader ? $index + 2 : $index + 1;
+
+                foreach ($validator->errors()->toArray() as $field => $fieldMessages) {
+                    foreach ($fieldMessages as $message) {
+                        $errors[] = [
+                            'row' => $sheetRowNumber,
+                            'field' => $field,
+                            'message' => $message,
+                        ];
+                    }
+                }
+
+                continue;
+            }
+
+            $validRows->push($validator->validated());
+        }
+
+        if ($errors !== []) {
+            $this->writeValidationErrors($errors, $errorSheetName);
+
+            throw ValidationException::withMessages(
+                collect($errors)
+                    ->groupBy(fn (array $error) => 'row_' . $error['row'] . '.' . $error['field'])
+                    ->map(fn (Collection $group) => $group->pluck('message')->all())
+                    ->all()
+            );
+        }
+
+        return $validRows;
+    }
+
+    protected function writeValidationErrors(array $errors, string $errorSheetName): void
+    {
+        $sheetName = $this->sheetName;
+        $currentRange = $this->currentRange;
+
+        try {
+            if (! $this->sheetExists($errorSheetName)) {
+                $this->createSheet($errorSheetName);
+            }
+
+            $rows = collect($errors)
+                ->map(fn (array $error) => [$error['row'], $error['field'], $error['message']])
+                ->prepend(['Row', 'Field', 'Message'])
+                ->all();
+
+            $this->sheet($errorSheetName)->clear();
+            $this->range('A1:C' . count($rows))->update($rows);
+            $this->boldHeader();
+            $this->autoResizeColumns(1, 3);
+        } finally {
+            $this->sheetName = $sheetName;
+            $this->currentRange = $currentRange;
+        }
     }
 
     protected function getSheetIdByTitle(string $title): ?int

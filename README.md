@@ -151,6 +151,12 @@ $validRows = GoogleSheets::connection('users')->validate([
     'email' => ['required', 'email'],
 ]);
 
+// Write row-level validation errors to an "Import Errors" tab before failing
+$validRows = GoogleSheets::connection('users')->validateWithErrorSheet([
+    'name' => ['required', 'string'],
+    'email' => ['required', 'email'],
+]);
+
 // Ensure required sheet headers exist
 GoogleSheets::connection('users')->requireHeaders(['name', 'email', 'role']);
 ```
@@ -208,6 +214,7 @@ class UsersImport extends SheetImport
     {
         return 'email';
     }
+    public ?string $errorSheet = 'Import Errors';
 
     public function rules(): array
     {

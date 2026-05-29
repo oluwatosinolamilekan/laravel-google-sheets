@@ -5,6 +5,7 @@ namespace Olamilekan\GoogleSheets\Testing;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Validation\ValidationException;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
@@ -19,9 +20,13 @@ class FakeSheet implements SheetInterface
 
     protected ?string $range = null;
 
+    protected bool $firstRowAsHeader = true;
+
     public array $appends = [];
 
     public array $updates = [];
+
+    public array $errorSheets = [];
 
     public function __construct(array $rows = [])
     {
@@ -43,6 +48,20 @@ class FakeSheet implements SheetInterface
     public function range(string $range): static
     {
         $this->range = $range;
+
+        return $this;
+    }
+
+    public function withoutHeaders(): static
+    {
+        $this->firstRowAsHeader = false;
+
+        return $this;
+    }
+
+    public function withHeaders(): static
+    {
+        $this->firstRowAsHeader = true;
 
         return $this;
     }
@@ -115,9 +134,27 @@ class FakeSheet implements SheetInterface
         return LazyCollection::make($this->rows);
     }
 
-    public function validate(array $rules, array $messages = [], array $attributes = []): Collection
+    public function validate(
+        array $rules,
+        array $messages = [],
+        array $attributes = [],
+        ?string $errorSheetName = null
+    ): Collection
     {
+        if ($errorSheetName !== null) {
+            return $this->validateRowsAndWriteErrors($rules, $messages, $attributes, $errorSheetName);
+        }
+
         return $this->all()->map(fn (array $row) => Validator::make($row, $rules, $messages, $attributes)->validate());
+    }
+
+    public function validateWithErrorSheet(
+        array $rules,
+        string $errorSheetName = 'Import Errors',
+        array $messages = [],
+        array $attributes = []
+    ): Collection {
+        return $this->validate($rules, $messages, $attributes, $errorSheetName);
     }
 
     public function requireHeaders(array $headers): static
@@ -174,5 +211,51 @@ class FakeSheet implements SheetInterface
         }
 
         return is_array(reset($rows)) ? array_values($rows) : [$rows];
+    }
+
+    protected function validateRowsAndWriteErrors(
+        array $rules,
+        array $messages,
+        array $attributes,
+        string $errorSheetName
+    ): Collection {
+        $validRows = collect();
+        $errors = [];
+
+        foreach ($this->all() as $index => $row) {
+            $validator = Validator::make($row, $rules, $messages, $attributes);
+
+            if ($validator->fails()) {
+                foreach ($validator->errors()->toArray() as $field => $fieldMessages) {
+                    foreach ($fieldMessages as $message) {
+                        $errors[] = [
+                            'row' => $this->firstRowAsHeader ? $index + 2 : $index + 1,
+                            'field' => $field,
+                            'message' => $message,
+                        ];
+                    }
+                }
+
+                continue;
+            }
+
+            $validRows->push($validator->validated());
+        }
+
+        if ($errors !== []) {
+            $this->errorSheets[$errorSheetName] = collect($errors)
+                ->map(fn (array $error) => [$error['row'], $error['field'], $error['message']])
+                ->prepend(['Row', 'Field', 'Message'])
+                ->all();
+
+            throw ValidationException::withMessages(
+                collect($errors)
+                    ->groupBy(fn (array $error) => 'row_' . $error['row'] . '.' . $error['field'])
+                    ->map(fn (Collection $group) => $group->pluck('message')->all())
+                    ->all()
+            );
+        }
+
+        return $validRows;
     }
 }
