@@ -199,6 +199,16 @@ use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class UsersImport extends SheetImport
 {
+    public function target()
+    {
+        return User::query();
+    }
+
+    public function key(): string
+    {
+        return 'email';
+    }
+
     public function rules(): array
     {
         return ['email' => ['required', 'email']];
@@ -215,6 +225,14 @@ class UsersImport extends SheetImport
 
 GoogleSheets::import(new UsersImport(), 'users');
 ```
+
+Preview an import from the command line without writing rows:
+
+```bash
+php artisan google-sheets:sync "App\\Imports\\UsersImport" users --dry-run
+```
+
+Dry-run imports compare the sheet rows against the import class `target()` using the column returned by `key()`. Validation rules are applied when the import defines `rules()`.
 
 ```php
 use App\Models\Report;
@@ -360,6 +378,7 @@ $fake->assertAppended('users', ['name' => 'Bob', 'email' => 'bob@example.com']);
 php artisan google-sheets:list users
 php artisan google-sheets:clear reports --sheet=Monthly --range=A2:D100
 php artisan google-sheets:sync "App\\Imports\\UsersImport" users
+php artisan google-sheets:sync "App\\Imports\\UsersImport" users --dry-run
 php artisan google-sheets:sync "App\\Exports\\ReportsExport" reports
 ```
 

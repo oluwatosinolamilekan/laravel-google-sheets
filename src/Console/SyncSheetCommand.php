@@ -9,7 +9,10 @@ use Olamilekan\GoogleSheets\Imports\SheetImport;
 
 class SyncSheetCommand extends Command
 {
-    protected $signature = 'google-sheets:sync {class : Import or export class name} {connection? : Configured sheet connection name}';
+    protected $signature = 'google-sheets:sync
+        {class : Import or export class name}
+        {connection? : Configured sheet connection name}
+        {--dry-run : Preview an import without writing data}';
 
     protected $description = 'Run a Google Sheets import or export class';
 
@@ -26,10 +29,35 @@ class SyncSheetCommand extends Command
         $instance = app($class);
 
         if ($instance instanceof SheetImport) {
+            if ($this->option('dry-run')) {
+                $preview = $instance->dryRun($sheets->connection($this->argument('connection')));
+                $counts = $preview->counts();
+
+                $this->info('Google Sheets import dry-run completed. No rows were written.');
+                $this->table(
+                    ['New', 'Changed', 'Deleted', 'Invalid', 'Conflicts'],
+                    [[
+                        $counts['new'],
+                        $counts['changed'],
+                        $counts['deleted'],
+                        $counts['invalid'],
+                        $counts['conflicts'],
+                    ]]
+                );
+
+                return self::SUCCESS;
+            }
+
             $sheets->import($instance, $this->argument('connection'));
             $this->info('Google Sheets import completed.');
 
             return self::SUCCESS;
+        }
+
+        if ($this->option('dry-run')) {
+            $this->error('The --dry-run option is only supported for SheetImport classes.');
+
+            return self::FAILURE;
         }
 
         if ($instance instanceof SheetExport) {
