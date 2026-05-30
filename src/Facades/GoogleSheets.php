@@ -35,7 +35,8 @@ use Olamilekan\GoogleSheets\Testing\FakeGoogleSheetsManager;
  * @method static int updateAssoc(array $rows)
  * @method static int upsert(string $keyColumn, array $rows)
  * @method static \Illuminate\Support\LazyCollection lazy(int $chunkSize = 500)
- * @method static \Illuminate\Support\Collection validate(array $rules, array $messages = [], array $attributes = [])
+ * @method static \Illuminate\Support\Collection validate(array $rules, array $messages = [], array $attributes = [], ?string $errorSheetName = null)
+ * @method static \Illuminate\Support\Collection validateWithErrorSheet(array $rules, string $errorSheetName = 'Import Errors', array $messages = [], array $attributes = [])
  * @method static Sheet requireHeaders(array $headers)
  * @method static mixed import(\Olamilekan\GoogleSheets\Imports\SheetImport $import, ?string $connection = null)
  * @method static int export(\Olamilekan\GoogleSheets\Exports\SheetExport $export, ?string $connection = null)
@@ -46,6 +47,16 @@ use Olamilekan\GoogleSheets\Testing\FakeGoogleSheetsManager;
  * @method static Sheet freezeRows(int $rows = 1)
  * @method static Sheet autoResizeColumns(int $startColumn = 1, ?int $endColumn = null)
  * @method static Sheet formatRange(string $range, array $format, string $fields = 'userEnteredFormat')
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncRows(array|\Illuminate\Support\Collection $rows, string $keyColumn, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncFromModel(string $modelClass, string $keyColumn, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncToModel(string $modelClass, string $keyColumn, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport importCsv(string $path, string $keyColumn, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport exportCsv(string $path, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncFromApi(string $url, string $keyColumn, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncToApi(string $url, array $options = [])
+ * @method static \Olamilekan\GoogleSheets\Sync\SyncReport syncTwoWay(mixed $target, string $keyColumn, array $options = [])
+ * @method static \Illuminate\Bus\PendingDispatch queueSync(string $method, array $arguments = [], ?string $queue = null, ?string $connection = null)
+ * @method static \Illuminate\Support\Collection syncAuditLog()
  *
  * @see \Olamilekan\GoogleSheets\GoogleSheetsManager
  */
