@@ -14,6 +14,10 @@ interface SheetInterface
 
     public function range(string $range): static;
 
+    public function withRetries(?int $attempts = null, ?int $delay = null): static;
+
+    public function withoutRetries(): static;
+
     public function get(): Collection;
 
     public function all(): Collection;

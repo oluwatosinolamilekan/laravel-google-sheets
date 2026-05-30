@@ -55,6 +55,16 @@ class FakeSheet implements SheetInterface
         return $this;
     }
 
+    public function withRetries(?int $attempts = null, ?int $delay = null): static
+    {
+        return $this;
+    }
+
+    public function withoutRetries(): static
+    {
+        return $this;
+    }
+
     public function withoutHeaders(): static
     {
         $this->firstRowAsHeader = false;

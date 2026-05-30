@@ -59,6 +59,10 @@ class GoogleSheetsManager implements ManagerInterface
             $sheet->setCacheConfig($this->config['cache']);
         }
 
+        if (! empty($this->config['retry'])) {
+            $sheet->setRetryConfig($this->config['retry']);
+        }
+
         return $sheet;
     }
 
@@ -124,6 +128,10 @@ class GoogleSheetsManager implements ManagerInterface
             $sheet->setCacheConfig($this->config['cache']);
         }
 
+        if (! empty($this->config['retry'])) {
+            $sheet->setRetryConfig($this->config['retry']);
+        }
+
         return $sheet;
     }
 
@@ -154,6 +162,7 @@ class GoogleSheetsManager implements ManagerInterface
             'value_render_option' => $this->config['value_render_option'] ?? 'FORMATTED_VALUE',
             'value_input_option' => $this->config['value_input_option'] ?? 'USER_ENTERED',
             'date_time_render_option' => $this->config['date_time_render_option'] ?? 'FORMATTED_STRING',
+            'retry' => $this->config['retry'] ?? [],
         ];
     }
 }

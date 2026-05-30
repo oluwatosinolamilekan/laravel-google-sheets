@@ -404,6 +404,24 @@ $rows = GoogleSheets::disableCache()->all();
 
 Write operations now clear remembered read cache keys for the active spreadsheet, so cached ranges are refreshed after updates.
 
+### Retry And Backoff
+
+Transient Google Sheets API failures are retried by default, including rate limits, quota throttling, and backend errors. The delay uses exponential backoff with jitter.
+
+```php
+// In config/google-sheets.php
+'retry' => [
+    'enabled' => true,
+    'attempts' => 3,
+    'delay' => 250,      // milliseconds
+    'max_delay' => 5000, // milliseconds
+],
+
+// At runtime
+$rows = GoogleSheets::withRetries(attempts: 5, delay: 500)->all();
+$rows = GoogleSheets::withoutRetries()->all();
+```
+
 ### Chunked Processing
 
 ```php
@@ -561,6 +579,8 @@ class UserImportService
 | `withoutHeaders()` | `static` | Return raw arrays |
 | `enableCache(?int $ttl)` | `static` | Enable caching |
 | `disableCache()` | `static` | Disable caching |
+| `withRetries(?attempts, ?delay)` | `static` | Enable retries and optionally override attempts/delay |
+| `withoutRetries()` | `static` | Disable retries for the current sheet instance |
 
 ---
 
@@ -575,6 +595,10 @@ class UserImportService
 | `GOOGLE_SHEETS_CACHE_ENABLED` | `false` | Enable response caching |
 | `GOOGLE_SHEETS_CACHE_STORE` | `null` (default driver) | Cache store to use |
 | `GOOGLE_SHEETS_CACHE_TTL` | `300` | Cache lifetime in seconds |
+| `GOOGLE_SHEETS_RETRY_ENABLED` | `true` | Retry transient Google API failures |
+| `GOOGLE_SHEETS_RETRY_ATTEMPTS` | `3` | Maximum attempts per API call |
+| `GOOGLE_SHEETS_RETRY_DELAY` | `250` | Initial retry delay in milliseconds |
+| `GOOGLE_SHEETS_RETRY_MAX_DELAY` | `5000` | Maximum retry delay in milliseconds |
 | `GOOGLE_SHEETS_VALUE_RENDER` | `FORMATTED_VALUE` | Value render option |
 | `GOOGLE_SHEETS_VALUE_INPUT` | `USER_ENTERED` | Value input option |
 
