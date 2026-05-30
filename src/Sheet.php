@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\LazyCollection;
 use Olamilekan\GoogleSheets\Concerns\HasCache;
 use Olamilekan\GoogleSheets\Concerns\HasHeaders;
+use Olamilekan\GoogleSheets\Concerns\HandlesRateLimits;
 use Olamilekan\GoogleSheets\Contracts\SheetInterface;
 use Olamilekan\GoogleSheets\Exports\SheetExport;
 use Olamilekan\GoogleSheets\Exceptions\GoogleSheetsException;
@@ -25,6 +26,7 @@ class Sheet implements SheetInterface
 {
     use HasCache;
     use HasHeaders;
+    use HandlesRateLimits;
 
     protected GoogleSheetsService $service;
 
@@ -52,6 +54,7 @@ class Sheet implements SheetInterface
         $this->valueRenderOption = $options['value_render_option'] ?? 'FORMATTED_VALUE';
         $this->valueInputOption = $options['value_input_option'] ?? 'USER_ENTERED';
         $this->dateTimeRenderOption = $options['date_time_render_option'] ?? 'FORMATTED_STRING';
+        $this->setRetryConfig($options['retry'] ?? []);
     }
 
     public function spreadsheet(string $spreadsheetId): static
@@ -85,14 +88,14 @@ class Sheet implements SheetInterface
         $range = $this->resolveRange();
 
         $rows = $this->remember("get:{$this->spreadsheetId}:{$range}", function () use ($range) {
-            $response = $this->service->spreadsheets_values->get(
+            $response = $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->get(
                 $this->spreadsheetId,
                 $range,
                 [
                     'valueRenderOption' => $this->valueRenderOption,
                     'dateTimeRenderOption' => $this->dateTimeRenderOption,
                 ]
-            );
+            ));
 
             return $response->getValues() ?? [];
         });
@@ -126,11 +129,11 @@ class Sheet implements SheetInterface
     {
         $range = "{$this->sheetName}!1:1";
 
-        $response = $this->service->spreadsheets_values->get(
+        $response = $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->get(
             $this->spreadsheetId,
             $range,
             ['valueRenderOption' => $this->valueRenderOption]
-        );
+        ));
 
         $values = $response->getValues() ?? [];
 
@@ -229,12 +232,12 @@ class Sheet implements SheetInterface
 
         $body = new ValueRange(['values' => $rows]);
 
-        $response = $this->service->spreadsheets_values->append(
+        $response = $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->append(
             $this->spreadsheetId,
             $range,
             $body,
             ['valueInputOption' => $this->valueInputOption]
-        );
+        ));
 
         $this->invalidateReadCache();
 
@@ -253,12 +256,12 @@ class Sheet implements SheetInterface
 
         $body = new ValueRange(['values' => $rows]);
 
-        $response = $this->service->spreadsheets_values->update(
+        $response = $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->update(
             $this->spreadsheetId,
             $range,
             $body,
             ['valueInputOption' => $this->valueInputOption]
-        );
+        ));
 
         $this->invalidateReadCache();
 
@@ -323,10 +326,10 @@ class Sheet implements SheetInterface
             'data' => $valueRanges,
         ]);
 
-        $response = $this->service->spreadsheets_values->batchUpdate(
+        $response = $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->batchUpdate(
             $this->spreadsheetId,
             $body
-        );
+        ));
 
         $this->invalidateReadCache();
 
@@ -337,11 +340,11 @@ class Sheet implements SheetInterface
     {
         $range = $this->resolveRange();
 
-        $this->service->spreadsheets_values->clear(
+        $this->withRateLimitRetries(fn () => $this->service->spreadsheets_values->clear(
             $this->spreadsheetId,
             $range,
             new ClearValuesRequest()
-        );
+        ));
 
         $this->invalidateReadCache();
 
@@ -521,7 +524,7 @@ class Sheet implements SheetInterface
 
     public function getSpreadsheet(): Spreadsheet
     {
-        return $this->service->spreadsheets->get($this->spreadsheetId);
+        return $this->withRateLimitRetries(fn () => $this->service->spreadsheets->get($this->spreadsheetId));
     }
 
     public function getTitle(): string
@@ -679,7 +682,7 @@ class Sheet implements SheetInterface
     {
         $body = new BatchUpdateSpreadsheetRequest(['requests' => $requests]);
 
-        $this->service->spreadsheets->batchUpdate($this->spreadsheetId, $body);
+        $this->withRateLimitRetries(fn () => $this->service->spreadsheets->batchUpdate($this->spreadsheetId, $body));
     }
 
     protected function invalidateReadCache(): void

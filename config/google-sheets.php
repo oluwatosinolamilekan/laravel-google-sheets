@@ -111,6 +111,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retry & Backoff
+    |--------------------------------------------------------------------------
+    |
+    | Retry transient Google Sheets API failures such as rate limits, quota
+    | throttling, and backend errors. Delays are in milliseconds and use
+    | exponential backoff with jitter between attempts.
+    |
+    */
+
+    'retry' => [
+        'enabled' => env('GOOGLE_SHEETS_RETRY_ENABLED', true),
+        'attempts' => env('GOOGLE_SHEETS_RETRY_ATTEMPTS', 3),
+        'delay' => env('GOOGLE_SHEETS_RETRY_DELAY', 250),
+        'max_delay' => env('GOOGLE_SHEETS_RETRY_MAX_DELAY', 5000),
+        'status_codes' => [429, 500, 502, 503, 504],
+        'reasons' => [
+            'rateLimitExceeded',
+            'userRateLimitExceeded',
+            'quotaExceeded',
+            'backendError',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Value Render & Input Options
     |--------------------------------------------------------------------------
     |
